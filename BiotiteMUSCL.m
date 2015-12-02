@@ -1,10 +1,47 @@
-% BiotiteMUSCL.m
+% Biotite Oxidation Simulation
+% 
+% Weathering Model example to demonstrate how to encode reactions and
+% kinetics into weathering model.  Either a rule-based or a formal reactive
+% transport approach may be employed due to model flexibility.
+
+% Create the weathering model:
+
+n = 100;
+dx = 0.01;
+waterBalance = 0.1;
+erosionRate = 0;
+
+waterBalance = waterBalance ./ (60*60*24*365);
+
+WM = WM.weatheringModel(n,dx,waterBalance,erosionRate)
+
+T = 3; % tortuosity
+D = 3e-9;
+D = D ./ (T.^2);
+
+% Add components:
+
+WM.addComponent(WM,'FeO','Solid', 181.5, 181.5);
+WM.addComponent(WM,'O2','Fluid',2.6e-1,2.6e-1,D);
+WM.addComponent(WM,'Fe(OH)3','Solid',0,0);
+WM.addComponent(WM,'AllOxides','Solid',39171,39171);
+
+% Create kinetic description:
+
+k = 10^(-10.7);
+
+KD = KD.makeEmptyKineticDescription(WM);
+KD.addConstant(WM,k);
+
+S = 4.7.*433.5;
+KD.addLinearFunction(WM, 'AllOxides', S, 0);
+
 
 r = 1/4;
 % Fastest case:
 
-k = 10^(-10.7);
-S_m2_g = 4.7;
+
+
 
 S = S_m2_g.*433.5; %mol/m2
 O2o = 2.6e-1; % mol/m3
@@ -12,7 +49,7 @@ FeOo = 181.5; %mol/m3
 Oxide = 39171; % mol/m3
 v = 0.1; % velocity in m/yr
 D = 3e-9; % diffusivity in m2/s
-T = 3; % tortuosity
+
 
 dx = 0.01; % in m.
 nx = 1000;
@@ -23,8 +60,7 @@ FeOo_vec = ones(1,nx).*FeOo;
 n = 2;
 
 
-v = v ./ (60*60*24*365);
-D = D ./ (T.^2);
+
 
 yinit = [FeOo_vec O2o_vec]';
 

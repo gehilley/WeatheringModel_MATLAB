@@ -1,7 +1,5 @@
 function dydt = muscl(t,y,boundaryConditionFcn,fluxFcn,sourceFcn,rhoFcn,limiterFcn,diffusionFcn,n,dx)
 
-t / (60*60*24*365)
-
 nx = length(y) ./ n;
 
 u = reshape(y,nx,n);
