@@ -6,7 +6,7 @@ classdef KineticDescription
     %   allow a rule-based empirical description of component transfer or a
     %   rigorous reactive-transport-based framework.
     
-    properties(SetAccess = private)
+    properties(Access = private)
         
         components = {};
         
@@ -14,15 +14,15 @@ classdef KineticDescription
     
     methods
         
-        function makeEmptyKineticDescription(WM)
+        function KD = KineticDescription(WM)
             KD.components = {};
         end
         
         function number = numberOfComponents(KD)
-            number = length(KD.components)
+            number = length(KD.components);
         end
         
-        function addConstant(KD,WM,k)
+        function KD = addConstant(KD,WM,a)
             
             thisComponent.type = 'Constant';
             thisComponent.value = a;
@@ -30,7 +30,7 @@ classdef KineticDescription
             
         end
         
-        function addPowerFunction(KD, WM, componentName, exponent)
+        function KD = addPowerFunction(KD, WM, componentName, exponent)
             
             if(~WM.componentExists(componentName))
                 error('addPowerFunction: no component with componentName exists in weathering model.');
@@ -38,13 +38,13 @@ classdef KineticDescription
             
             thisComponent.type = 'PowerFunction';
             thisComponent.exponent = exponent;
-            thisComponent.name = componentname;
+            thisComponent.name = componentName;
             
             KD.components{KD.numberOfComponents()+1} = thisComponent;
             
         end
         
-        function addLinearFunction(KD, WM, componentName, a, b)
+        function KD = addLinearFunction(KD, WM, componentName, a, b)
             
             if(~WM.componentExists(componentName))
                 error('addLinearFunction: no component with componentName exists in weathering model.');
@@ -59,7 +59,7 @@ classdef KineticDescription
             
         end
         
-        function addExponentialFunction(KD, WM, componentName, foldingValue, scale, offset)
+        function KD = addExponentialFunction(KD, WM, componentName, foldingValue, scale, offset)
             
             if(~WM.componentExists(componentName))
                 error('addExponentialFunction: no component with componentName exists in weathering model.');
@@ -85,23 +85,23 @@ classdef KineticDescription
                 
                 switch thisComponent.type
                     case 'Constant'
-                        k = k.*thisComponent.a;
+                        k = k.*thisComponent.value;
                     case 'PowerFunction'
                         scaledComponentName = thisComponent.name;
-                        [index, values] = WM.getIndexAndValuesForComponent(WM, scaledComponentName);
-                        values = mat(:,index);
+                        [index, values] = WM.getIndexAndValuesForComponent(scaledComponentName);
+                        values = (mat(:,index) > 0).*(mat(:,index));
                         k = k.*values.^thisComponent.exponent;
                     case 'LinearFunction'
                         scaledComponentName = thisComponent.name;
-                        [index, values] = WM.getIndexAndValuesForComponent(WM, scaledComponentName);
-                        values = mat(:,index);
+                        [index, values] = WM.getIndexAndValuesForComponent(scaledComponentName);
+                        values = (mat(:,index) > 0).*(mat(:,index));
                         values = values.*thisComponent.a + thisComponent.b;
                         values = (values >= 0).*values;
                         k = k.*values;
                     case 'ExponentialFunction'
                         scaledComponentName = thisComponent.name;
-                        [index, values] = WM.getIndexAndValuesForComponent(WM, scaledComponentName);
-                        values = mat(:,index);
+                        [index, values] = WM.getIndexAndValuesForComponent(scaledComponentName);
+                        values = (mat(:,index) > 0).*(mat(:,index));
                         values = thisComponent.a.*(exp(thisComponent.lambda.*values) - thisComponent.b);
                         k = k.*values;
                 end

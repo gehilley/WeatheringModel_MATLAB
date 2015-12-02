@@ -1,6 +1,6 @@
 classdef weatheringModel < handle
     
-    properties(Access = private)
+    properties(Access = public)
         
         dx = 0;
         numNodes = 0;
@@ -83,12 +83,12 @@ classdef weatheringModel < handle
         
         function limiter = superbee(WM, u)
             
-            n = length(WM.numComponents);
-            nx = length(WM.numberOfNodes());
+            n = length(WM.components);
+            nx = WM.numberOfNodes();
             
-            zer = zeros(nx,n);
-            one = ones(nx,n);
-            twos = 2.*ones(nx,n);
+            zer = zeros(nx+2,n);
+            one = ones(nx+2,n);
+            twos = 2.*ones(nx+2,n);
             
             % Precondition u for nans and infs:
             
@@ -123,7 +123,7 @@ classdef weatheringModel < handle
             
             for(i=1:WM.numReactions)
                 
-                thisReaction = WM.reaction{i};
+                thisReaction = WM.reactions{i};
                 
                 % calculate kinetics:
                 
@@ -154,6 +154,8 @@ classdef weatheringModel < handle
                     [index, values] = WM.getIndexAndValuesForComponent(thisComponent);
                     
                     S(:,index) = -k.*thisStoichiometry;
+                    S(:,index) = (S(:,index) <= 0).*S(:,index);
+                    
                 end
                 
                 for(j = 1:length(thisReaction.products))
@@ -162,9 +164,10 @@ classdef weatheringModel < handle
                     thisComponent = thisProduct.component;
                     thisStoichiometry = thisProduct.stoichiometry;
                     
-                    [index, values] = W>getIndexAndValuesForComponent(thisComponent);
+                    [index, values] = WM.getIndexAndValuesForComponent(thisComponent);
                     
                     S(:,index) = k.*thisStoichiometry;
+                    S(:,index) = (S(:,index) >= 0).*S(:,index);
                     
                 end
                 
@@ -190,10 +193,11 @@ classdef weatheringModel < handle
             for(i=1:length(names))
                 
                 componentName = names{i};
-                [indexes, values] = WM.getIndexAndValuesForComponent(componentName);
-                values = [UBC(1);values;LBC(1)];
-                Diffusivity = WM.components{i}.diffusivity;
-                D(:,indexes) = Diffusivity.*(values(3:end) - 2.*values(2:end-1) + values(1:end-2)) ./ WM.dx;
+                indexes = WM.getIndexAndValuesForComponent(componentName);
+                values = mat(:,indexes(i));
+                values = [UBC(1,indexes(i));values;values(end)];
+                Diffusivity = WM.components{indexes(i)}.diffusivity;
+                D(:,indexes(i)) = Diffusivity.*(values(3:end) - 2.*values(2:end-1) + values(1:end-2)) ./ (WM.dx.^2);
             end
             
             D = WM.getVectorFromMatrix(D);
@@ -219,7 +223,7 @@ classdef weatheringModel < handle
             uip2 = mat(5:end,:);
             uim1 = mat(2:end-3,:);
 
-            ri = (u(2:end-1,:) - u(1:end-2,:))./(u(3:end,:) - u(2:end-1,:));
+            ri = (mat(2:end-1,:) - mat(1:end-2,:))./(mat(3:end,:) - mat(2:end-1,:));
 
             limiter = WM.superbee(ri);
 
@@ -250,10 +254,17 @@ classdef weatheringModel < handle
         end
         
         function dydt = calculateDyDt(WM, t, y)
+                        
+            s = round(rand(1,1)*10000);
+            if mod(s,10000) == 1
+                fprintf('t = %6.1f \n',t/(60*60*24*365));
+            end
             
-            S = WM.calculateSourceFunction(WM, y);
-            D = WM.calculateDiffusionFunction(WM, y);
-            F = WM. calculateFluxes(WM,y);
+            mat = WM.getMatrixFromVector(y);
+            
+            S = WM.calculateSourceFunction(y);
+            D = WM.calculateDiffusionFunction(y);
+            F = WM. calculateFluxes(y);
             
             dydt = S + D + F;
             
@@ -269,6 +280,13 @@ classdef weatheringModel < handle
             for(i=1:length(WM.components))
                 u(:,i) = WM.components{i}.values;
             end
+            
+        end
+        
+        function yo = getICs(WM)
+            
+            u = WM.getICMatrix();
+            yo = WM.getVectorFromMatrix(u);
             
         end
         
@@ -317,7 +335,7 @@ classdef weatheringModel < handle
         end
         
         function number = numberOfNodes(WM)
-            number = WM.numberOfNodes;
+            number = WM.numNodes;
         end
         
         function test = componentExists(WM,componentName)
@@ -331,10 +349,10 @@ classdef weatheringModel < handle
             
         end
             
-        function addComponent(WM,componentName,componentType, initialCondition,boundaryConditions, diffusivity)
+        function WM = addComponent(WM,componentName,componentType, initialCondition,boundaryConditions, diffusivity)
             
-            if(length(initialCondition) ~= 1 && length(initialCondition) ...
-                    ~= WM.numberOfNodes)
+            if((length(initialCondition) ~= 1) & (length(initialCondition) ...
+                    ~= WM.numberOfNodes))
                 error(['addComponent: Number of Values Specified in initialCondition is incompatible with ' num2str(WM.numberOfNodes) ' nodes in model.']);
             end
             
@@ -342,15 +360,15 @@ classdef weatheringModel < handle
                 error('addComponent: Component already exists.');
             end
             
-            if((componentType ~= 'Solid') && (componentType ~= 'Fluid') && (componentType ~= 'Constant'))
+            if((componentType ~= 'Solid') & (componentType ~= 'Fluid') & (componentType ~= 'Constant'))
                 error('addComponent: Unrecognized component type.');
             end
             
-            if((componentType ~= 'Fluid') && exists(diffusivity))
+            if((componentType ~= 'Fluid') & exists(diffusivity))
                 error('addComponent: Diffusivity of components only applies to Fluid phase.');
             end
             
-            if(~exists(diffusivity))
+            if(~exist('diffusivity','var'))
                 diffusivity = 0;
             end
             
@@ -382,9 +400,9 @@ classdef weatheringModel < handle
             
         end
         
-        function addReaction(WM, reactants, reactantStoichiometries, products, productStoichiometries, kinetics)
+        function WM = addReaction(WM, reactants, reactantStoichiometries, products, productStoichiometries, kinetics)
             
-            if( (length(reactants) ~= length(reactantStoichiometries)) || (length(reactantStoichiometries) ~= length(productStoichiometries)) )
+            if( (length(reactants) ~= length(reactantStoichiometries)) | (length(products) ~= length(productStoichiometries)) )
                 error('addReaction: number of components must match number of stoichiometric coefficients.');
             end
             
@@ -410,7 +428,7 @@ classdef weatheringModel < handle
             
             for(i=1:length(products))
                 thisProduct.stoichiometry = productStoichiometries(i);
-                thisProduct.component = productStoichiometries{i};
+                thisProduct.component = products{i};
                 thisReaction.products{i} = thisProduct;
             end
             
@@ -437,7 +455,7 @@ classdef weatheringModel < handle
         
         function [indexes, names] = getIndexesAndNamesForComponentType(WM,componentType)
             
-            if((componentType ~= 'Solid') && (componentType ~= 'Fluid') && (componentType ~= 'Constant'))
+            if((componentType ~= 'Solid') & (componentType ~= 'Fluid') & (componentType ~= 'Constant'))
                 error('getIndexesAndNamesForComponentType: Unrecognized component type.');
             end
             
@@ -454,15 +472,26 @@ classdef weatheringModel < handle
             
         end
                 
-        function yout = solveForTime(WM, tvec)
+        function yout = solveForTime(WM, tvec, useCFL)
             
             yinit = WM.getICs();
             
             % Setup ODE solver (implicit):
             
-            options = odeset('MaxStep',WM.CFLTimeStep());
+            fun = @(t,y)WM.calculateDyDt(t, y);
             
-            [tout, yout] = ode23s(WM.calculateDyDt,tvec,yinit,options);
+            if(strcmp(useCFL,'Yes'))
+                options = odeset('MaxStep',WM.CFLTimeStep());
+            
+                [tout, yout] = ode23s(fun,tvec,yinit,options);
+                
+            else
+                %options = odeset('RelTol',1e-2,'AbsTol',1e-4,'NormControl','on');
+                [tout, yout] = ode23tb(fun,tvec,yinit);
+                
+            end
+                
+            
             
         end             
             
